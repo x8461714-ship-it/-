@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>トモダチマンション：スマホ完全対応版</title>
+    <style>
+        :root { --main-bg: #2c3e50; --accent: #ffcc00; }
+        * { -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #000; color: #333; }
+        
+        /* キャンバスを背面に固定 */
+        canvas { position: fixed; top: 0; left: 0; z-index: 1; }
+
+        /* UIの共通設定 */
+        .ui-layer { position: relative; z-index: 10; width: 100%; height: 100vh; pointer-events: none; }
+        .ui-layer * { pointer-events: auto; }
+        .panel { background: rgba(255, 255, 255, 0.95); border-radius: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); padding: 15px; }
+
+        /* キャラクリ */
+        #char-create-overlay { position: fixed; inset: 0; background: var(--main-bg); z-index: 2000; display: flex; flex-direction: column; }
+        #forms-scroll { flex: 1; overflow-y: auto; padding: 20px; }
+        .create-card { background: #fff; padding: 15px; border-radius: 15px; margin-bottom: 15px; border-bottom: 5px solid #bdc3c7; }
+
+        /* 廊下 */
+        #hallway { position: fixed; inset: 0; background: #444; z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .room-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 90%; }
+        .room-btn { height: 120px; background: var(--accent); border: 4px solid #fff; border-radius: 20px; font-weight: bold; position: relative; font-size: 18px; }
+        .alert-dot { position: absolute; top: -10px; right: -10px; background: #ff5722; color: white; border-radius: 50%; width: 35px; height: 35px; line-height: 35px; text-align: center; }
+
+        /* ゲーム中UI */
+        #room-ui { display: none; }
+        #status-bar { position: absolute; top: 40px; left: 5%; width: 90%; }
+        #main-menu { position: absolute; bottom: 40px; left: 5%; width: 90%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+        /* 吹き出しボタン */
+        #problem-bubble { position: absolute; z-index: 50; background: #ff9800; color: white; width: 60px; height: 60px; line-height: 60px; text-align: center; border-radius: 50%; font-size: 30px; border: 4px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: none; }
+
+        /* ポップアップウィンドウ */
+        .window { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; max-width: 350px; display: none; z-index: 500; text-align: center; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
+        
+        button { border: none; border-radius: 15px; font-weight: bold; padding: 15px 5px; cursor: pointer; background: #eee; }
+        button:active { background: #ddd; transform: scale(0.95); }
+        .btn-green { background: #27ae60; color: white; padding: 20px; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+    <div id="char-create-overlay">
+        <div style="text-align:center; color:white; padding:20px;"><h2>住民登録</h2></div>
+        <div id="forms-scroll"></div>
+        <div style="padding: 20px;"><button class="btn-green" style="width:100%" onclick="finishCreation()">マンションを開放する</button></div>
+    </div>
+
+    <div id="hallway">
+        <h1 style="color:white; margin-bottom:30px;">トモダチマンション</h1>
+        <div class="room-grid" id="room-container"></div>
+    </div>
+
+    <div id="room-ui" class="ui-layer">
+        <div id="status-bar" class="panel">
+            <div style="display:flex; justify-content:space-between; font-weight:bold;">
+                <span id="res-name">---</span>
+                <span id="money-display" style="color:green;">¥2000</span>
+            </div>
+            <div style="width:100%; height:15px; background:#ddd; border-radius:10px; margin-top:10px; overflow:hidden;">
+                <div id="hunger-bar" style="height:100%; background:red; width:100%;"></div>
+            </div>
+        </div>
+
+        <div id="problem-bubble">？</div>
+
+        <div id="main-menu" class="panel">
+            <button onclick="openWin('shop-win')">🍴 食事</button>
+            <button onclick="openWin('cloth-win')">👕 服</button>
+            <button onclick="openWin('room-win')">🏠 改装</button>
+            <button onclick="openWin('inv-win')">📦 持物</button>
+            <button onclick="play()">🎾 遊ぶ</button>
+            <button onclick="leaveRoom()" style="background:#ccc;">🚪 出る</button>
+        </div>
+    </div>
+
+    <div id="shop-win" class="panel window">
+        <h3>食べ物屋</h3>
+        <div class="grid">
+            <button onclick="buy('おにぎり', 100)">🍙 ¥100</button>
+            <button onclick="buy('ステーキ', 800)">🥩 ¥800</button>
+        </div>
+        <button onclick="closeWin()" style="width:100%">閉じる</button>
+    </div>
+
+    <div id="cloth-win" class="panel window">
+        <h3>服屋</h3>
+        <div class="grid">
+            <button onclick="changeCloth(0x3366ff, 200)">青 ¥200</button>
+            <button onclick="changeCloth(0xff4444, 200)">赤 ¥200</button>
+            <button onclick="changeCloth(0x4caf50, 200)">緑 ¥200</button>
+            <button onclick="changeCloth(0xffd700, 5000)">黄金 ¥5k</button>
+        </div>
+        <button onclick="closeWin()" style="width:100%">閉じる</button>
+    </div>
+
+    <div id="room-win" class="panel window">
+        <h3>改装屋</h3>
+        <div class="grid">
+            <button onclick="changeRoom(0xffffff, 0x99cc66, 300)">通常 ¥300</button>
+            <button onclick="changeRoom(0x222222, 0x444444, 800)">モダン ¥800</button>
+        </div>
+        <button onclick="closeWin()" style="width:100%">閉じる</button>
+    </div>
+
+    <div id="inv-win" class="panel window">
+        <h3>もちもの</h3>
+        <div id="inv-list" class="grid"></div>
+        <button onclick="closeWin()" style="width:100%">閉じる</button>
+    </div>
+
+    <div id="msg-win" class="panel window">
+        <h2 id="msg-title"></h2>
+        <p id="msg-text"></p>
+        <button onclick="closeMsg()" style="width:100%; background:#444; color:#fff;">OK</button>
+    </div>
+
+    <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 音声管理 (スマホ対策) ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(freq, type = 'sine', dur = 0.2) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + dur);
+        }
+
+        // --- ゲームデータ ---
+        let money = 2000;
+        let inventory = [];
+        let curIdx = 0;
+        let residents = [];
+
+        // キャラクリ画面生成
+        const formScroll = document.getElementById('forms-scroll');
+        for(let i=0; i<4; i++) {
+            const card = document.createElement('div');
+            card.className = 'create-card';
+            card.innerHTML = `<b>住民 ${i+1}</b><br>なまえ: <input type="text" id="name-${i}" value="キャラ${i+1}"><br>
+                性格: <select id="type-${i}"><option>元気</option><option>クール</option><option>まじめ</option></select>`;
+            formScroll.appendChild(card);
+        }
+
+        window.finishCreation = () => {
+            initAudio(); playSound(880);
+            for(let i=0; i<4; i++) {
+                residents.push({
+                    name: document.getElementById(`name-${i}`).value,
+                    type: document.getElementById(`type-${i}`).value,
+                    hunger: 100, cloth: 0x3366ff, wall: 0xffffff, floor: 0x99cc66, prob: false
+                });
+            }
+            const container = document.getElementById('room-container');
+            residents.forEach((r, i) => {
+                container.innerHTML += `<button class="room-btn" onclick="enterRoom(${i})">${r.name}<div id="dot-${i}" class="alert-dot" style="display:none">!</div></button>`;
+            });
+            document.getElementById('char-create-overlay').style.display = 'none';
+            document.getElementById('hallway').style.display = 'flex';
+        };
+
+        // --- 3D基本設定 ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const roomBase = new THREE.Group();
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(10,10), new THREE.MeshPhongMaterial({color: 0x99cc66}));
+        floor.rotation.x = -Math.PI/2;
+        const wall = new THREE.Mesh(new THREE.PlaneGeometry(10,8), new THREE.MeshPhongMaterial({color: 0xffffff}));
+        wall.position.set(0, 4, -2);
+        roomBase.add(floor, wall, new THREE.AmbientLight(0xffffff, 1.2));
+        scene.add(roomBase);
+
+        const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 0.6, 4, 16), new THREE.MeshPhongMaterial({color:0x3366ff}));
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 24, 24), new THREE.MeshPhongMaterial({color:0xffdbac}));
+        body.position.y = 0.7; head.position.y = 1.45;
+        const char = new THREE.Group(); char.add(body, head);
+        scene.add(char);
+        camera.position.set(0, 1.8, 4); camera.lookAt(0, 1.2, 0);
+
+        // --- アクション ---
+        window.enterRoom = (i) => {
+            initAudio(); playSound(660); curIdx = i;
+            const r = residents[i];
+            body.material.color.setHex(r.cloth);
+            wall.material.color.setHex(r.wall);
+            floor.material.color.setHex(r.floor);
+            document.getElementById('res-name').innerText = r.name;
+            document.getElementById('hallway').style.display = 'none';
+            document.getElementById('room-ui').style.display = 'block';
+            updateUI();
+        };
+
+        window.leaveRoom = () => { playSound(440); document.getElementById('hallway').style.display='flex'; document.getElementById('room-ui').style.display='none'; };
+        window.openWin = (id) => { playSound(880); document.getElementById(id).style.display='block'; if(id==='inv-win') updateInv(); };
+        window.closeWin = () => { document.querySelectorAll('.window').forEach(w=>w.style.display='none'); };
+
+        function updateUI() {
+            const r = residents[curIdx];
+            document.getElementById('hunger-bar').style.width = r.hunger + "%";
+            document.getElementById('money-display').innerText = "¥" + Math.floor(money);
+            document.getElementById('problem-bubble').style.display = r.prob ? 'block' : 'none';
+        }
+
+        window.buy = (n,p) => { if(money>=p){ money-=p; inventory.push(n); playSound(1320); updateUI(); } else playSound(220,'sawtooth'); };
+        window.changeCloth = (c,p) => { if(money>=p){ money-=p; residents[curIdx].cloth=c; body.material.color.setHex(c); playSound(1320); updateUI(); } };
+        window.changeRoom = (w,f,p) => { if(money>=p){ money-=p; residents[curIdx].wall=w; residents[curIdx].floor=f; wall.material.color.setHex(w); floor.material.color.setHex(f); playSound(1320); updateUI(); } };
+        window.play = () => { money+=200; char.rotation.y += Math.PI*2; jump(); playSound(880); updateUI(); };
+
+        function updateInv() {
+            const list = document.getElementById('inv-list'); list.innerHTML = '';
+            inventory.forEach((item, i) => {
+                const b = document.createElement('button'); b.innerText = item;
+                b.onclick = () => { inventory.splice(i,1); residents[curIdx].hunger=Math.min(100, residents[curIdx].hunger+50); playSound(1320); updateInv(); updateUI(); };
+                list.appendChild(b);
+            });
+        }
+
+        // 吹き出しタップ
+        document.getElementById('problem-bubble').onclick = () => {
+            playSound(880);
+            document.getElementById('msg-title').innerText = "なやみ相談";
+            document.getElementById('msg-text').innerText = "お腹が空いたので500円ください！";
+            document.getElementById('msg-win').style.display = 'block';
+        };
+
+        window.closeMsg = () => {
+            money += 500;
+            residents[curIdx].prob = false;
+            document.getElementById(`dot-${curIdx}`).style.display = 'none';
+            document.getElementById('msg-win').style.display = 'none';
+            playSound(1320); updateUI(); jump();
+        };
+
+        function jump() { let v = 0.15; const j = () => { char.position.y+=v; v-=0.01; if(char.position.y>0) requestAnimationFrame(j); else char.position.y=0; }; j(); }
+
+        // ループ処理
+        setInterval(() => {
+            const i = Math.floor(Math.random()*residents.length);
+            if(!residents[i].prob) {
+                residents[i].prob = true;
+                const dot = document.getElementById(`dot-${i}`);
+                if(dot) dot.style.display = 'block';
+            }
+        }, 15000);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            residents.forEach(r => { if(r.hunger > 0) r.hunger -= (100/(60*30)); });
+            if(document.getElementById('room-ui').style.display === 'block') {
+                updateUI();
+                const v = new THREE.Vector3(0, 2.2, 0);
+                v.project(camera);
+                const x = (v.x * .5 + .5) * window.innerWidth;
+                const y = (v.y * -.5 + .5) * window.innerHeight;
+                const bubble = document.getElementById('problem-bubble');
+                bubble.style.left = (x - 30) + 'px';
+                bubble.style.top = (y - 30) + 'px';
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 最初のタッチでオーディオを起動
+        window.addEventListener('touchstart', initAudio, { once: true });
+    </script>
+</body>
+</html>
